@@ -10,7 +10,7 @@ conda env create -f environment.yml
 
 ## Evaluation
 Using the following script to evaluate Speculative RAG.
-'''bash
+```bash
 conda activate sperag
 bash ./scripts/inference.sh
 ```
