@@ -1,4 +1,4 @@
-python ./src/utils/embedding.py \
-  --input_path ./data/train/retrieval_corpus/knowledge_intensive/retrieved/asqa.jsonl \
-  --index_path ./data/train/embedding/asqa.index \
-  --meta_path ./data/train/embedding/asqa_meta.pkl
+python ./src/utils/embedding_eval.py \
+  --input_path /home/user4/Speculative_RAG/data/inference/arc-c/test_retrieved.jsonl \
+  --index_path /home/user4/Speculative_RAG/data/inference/arc-c/test.index \
+  --meta_path /home/user4/Speculative_RAG/data/inference/arc-c/test_meta.pkl

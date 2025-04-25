@@ -70,7 +70,8 @@ def generate_draft(
             n += 1
             texts += f"[{n}] {item.get('doc_title', '')}\n{item.get('texts', '')}\n"
 
-    question = re.search(r"## Input:\s*(.*)", question, re.DOTALL).group(1).strip()
+    #print(question)
+    #question = re.search(r"## Input:\s*(.*)", question, re.DOTALL).group(1).strip()
     ## RAG Drafting           
     draft_prompt = f"""Response to the instruction. Also provide rationale for your response. 
 

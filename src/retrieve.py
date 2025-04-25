@@ -49,18 +49,14 @@ def load_questions(path):
 def retrieve_for_questions(questions, top_k=10):
     results = []
     for q in tqdm(questions, desc="Retrieving"):
-        if "question" in q:
-            q_text = q["question"]
+        if "choices" in q:  # e.g., {"question": ..., "choices": ..., ...}
+            q_text = q.get("question", q.get("question_stem", ""))
             choices = q["choices"]
-            answerKey = q["answerKey"]
-        elif "question_concept" in q:
+            answerKey = q.get("answerKey", "")
+        elif "question" in q and "choices" in q["question"] and "stem" in q["question"]:
             q_text = q["question"]["stem"]
             choices = q["question"]["choices"]
-            answerKey = q["answerKey"]
-        elif "question_stem" in q:
-            q_text = q["question_stem"]
-            choices = q["choices"]
-            answerKey = q["answerKey"]
+            answerKey = q.get("answerKey", "")
         elif "goal" in q:
             q_text = q["goal"]
             choices = {"text": [q["sol1"], q["sol2"]], "label": ["A", "B"]}
@@ -70,7 +66,9 @@ def retrieve_for_questions(questions, top_k=10):
             choices = {"text": [q["option1"], q["option2"]], "label": ["A", "B"]}
             answerKey = q["answer"]
         else:
+            print(f"⚠️ Unknown format: {q}")
             continue
+
         
         inputs = tokenizer(q_text, return_tensors="pt", padding=True, truncation=True, max_length=512).to(DEVICE)
         with torch.amp.autocast(device_type='cuda'):
@@ -175,3 +173,16 @@ if __name__ == "__main__":
             with open(args.save_metadata_path, "wb") as f:
                 pickle.dump(metadata, f)
             print(f"✅ Save metadata as pickle: {args.save_metadata_path}")
+
+    print("📂 Loading questions from JSONL...")
+    questions = load_questions(args.jsonl_path)
+
+    print("🔍 Retrieving top-k documents per question...")
+    retrieved_results = retrieve_for_questions(questions, top_k=TOP_K)
+
+    print(f"💾 Saving retrieval results to {args.output_path}...")
+    with open(args.output_path, "w", encoding="utf-8") as f:
+        for item in retrieved_results:
+            f.write(json.dumps(item, ensure_ascii=False) + "\n")
+
+    print("✅ Retrieval complete.")

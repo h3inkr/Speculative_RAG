@@ -15,7 +15,7 @@ import os
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else 'cpu')
 
-model_name = "meta-llama/Llama-3.1-8B"
+model_name = "mistralai/Mistral-7B-v0.1"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 tokenizer.pad_token = tokenizer.eos_token
 
@@ -42,7 +42,7 @@ model.print_trainable_parameters()
 # load dataset
 dataset = load_dataset(
     "json", 
-    data_files={"train": "/home/user4/SpeRAG/data/train/knowledge_intensive/sft/sft_data_retrieved.jsonl"} # 훈련 데이터셋
+    data_files={"train": "/home/user4/Speculative_RAG/data/train/knowledge_intensive/sft/sft_data_retrieved.jsonl"} # 훈련 데이터셋
 )["train"]
 
 
@@ -76,7 +76,7 @@ def format_and_tokenize(example):
 tokenized_dataset = dataset.map(format_and_tokenize, remove_columns=dataset.column_names)
 
 args = TrainingArguments(
-    output_dir="./draft-model-sft",
+    output_dir="./draft-model-sft_mistral7B",
     per_device_train_batch_size=1,
     gradient_accumulation_steps=8,
     num_train_epochs=3,
@@ -99,5 +99,5 @@ trainer = Trainer(
 
 trainer.train()
 
-model.save_pretrained("./draft-model-sft")
-tokenizer.save_pretrained("./draft-model-sft")
+model.save_pretrained("./draft-model-sft_mistral7B")
+tokenizer.save_pretrained("./draft-model-sft_mistral7B")

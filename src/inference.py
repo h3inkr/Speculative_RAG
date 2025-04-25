@@ -9,13 +9,12 @@ from itertools import islice
 
 import sys
 sys.path.append('./src/utils')
-from embedding import InbedderEmbedding
 from multi_perspective import documents_to_clusters, multi_perspective_sampling
 from rag_drafter import generate_draft
 from rag_verifier import compute_score
 from metrics import compute_metrics
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:2" if torch.cuda.is_available() else "cpu")
 
 def parse_argument():
     parser = argparse.ArgumentParser()
@@ -42,9 +41,13 @@ if __name__ == "__main__":
     qa_pairs = {}
     for item in metadata:
         q = item.get("question")
-        a = item.get("answerKey")
+        a = item.get("answer")
+        choices = item.get("choices")
         if q and a:
-            qa_pairs[q] = a  # Dictionary로 관리
+            qa_pairs[q] = {
+                "answer": a,
+                "choices": choices  # choices를 추가
+            }
 
     if args.drafter_path:
         drafter_path = args.drafter_path
@@ -55,9 +58,13 @@ if __name__ == "__main__":
     total = 0
     output_data = []
 
-    print(f"\n[INFO] Total QA Pairs: {len(qa_pairs)}\n")
-    for question, answer in tqdm(islice(qa_pairs.items(), 3), desc="QA Evaluation", unit="pair"): 
+    print(f"\n❗ Total QA Pairs: {len(qa_pairs)}\n")
+    for question, answithchoi in tqdm(islice(qa_pairs.items(), 5), desc="QA Evaluation", unit="pair"): 
     #for question, answer in tqdm(qa_pairs.items(), desc="QA Evaluation", unit="pair"):
+
+        answer = answithchoi["answer"]
+        choices = answithchoi["choices"]
+
         clusters = documents_to_clusters(index_path=args.index_path, meta_path=args.meta_path, k=args.k)
         subsets = multi_perspective_sampling(clusters=clusters, m=args.m)
 
@@ -89,6 +96,7 @@ if __name__ == "__main__":
         output_data.append({
             "question": question,
             "ground_truth": answer,
+            "choices": choices,
             "generated_answer": best_response,
             })
     
