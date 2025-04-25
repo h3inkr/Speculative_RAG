@@ -19,32 +19,17 @@ def normalize_answer(s):
 
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-def exact_presence(answers, context):
-    """Verify if any of the answers is present in the given context."""
-
-    answers = [normalize_answer(ans) for ans in answers]
-    context = normalize_answer(context)
-
-    print(f"answers: {answers}")
-    print(f"context: {context}")
-
-    for ans in answers:
-        if ans in context:
-            return True
-
-    return False
-
-def get_metrics(data):
-    idx = 0
-    num_accurate = 0
-    print('Evaluating results...')
-
+def compute_metrics(data):
+    correct = 0
+    data_len = 0
     for d in tqdm(data):
-        idx += 1
-        print(f"ground_truth: {d['ground_truth']}")
-        print(f"generated_answer: {d['generated_answer']}")
-        is_accurate = exact_presence(d['ground_truth'], d['generated_answer'])
-        num_accurate += 1 if is_accurate else 0
+        data_len += 1
+        idx = d["choices"]["label"].index(d["answerKey"])
+        truth = normalize_answer(d["choices"]["text"][idx])
+        answer = normalize_answer(d['generated_answer'])
+        if truth == answer:
+            correct += 1
+    
+    acc = correct / data_len * 100 if data_len !=0 else 0
 
-    accuracy = num_accurate / idx * 100
-    print(f"Accuracy: {accuracy:.1f}%")
+    print(f"Accuracy: {acc:.1f}%")

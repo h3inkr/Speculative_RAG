@@ -13,7 +13,7 @@ from embedding import InbedderEmbedding
 from multi_perspective import documents_to_clusters, multi_perspective_sampling
 from rag_drafter import generate_draft
 from rag_verifier import compute_score
-from metrics import get_metrics
+from metrics import compute_metrics
 
 device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
 
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     qa_pairs = {}
     for item in metadata:
         q = item.get("question")
-        a = item.get("answer")
+        a = item.get("answerKey")
         if q and a:
             qa_pairs[q] = a  # Dictionary로 관리
 
@@ -92,4 +92,4 @@ if __name__ == "__main__":
             "generated_answer": best_response,
             })
     
-    get_metrics(output_data) # 수정 필요: benchmark 형식에 맞게
+    compute_metrics(output_data)
