@@ -5,6 +5,7 @@ Implementation for the paper Speculative RAG (ICLR 2025)
 ## Installation
 You can directly create a conda environment using the provided configuration file.
 ```bash
+cd Speculative_RAG
 conda env create -f environment.yml
 ```
 
@@ -12,5 +13,6 @@ conda env create -f environment.yml
 Using the following script to evaluate Speculative RAG.
 ```bash
 conda activate sperag
+cd Speculative_RAG
 bash ./scripts/inference.sh
 ```
