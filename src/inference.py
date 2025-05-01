@@ -20,7 +20,7 @@ def parse_argument():
     parser = argparse.ArgumentParser()
     parser.add_argument("--index_path", "-ip", type=str, required=True, help="faiss index")
     parser.add_argument("--meta_path", "-mp", type=str, required=True) 
-    parser.add_argument("--k", "-k", type=int, default=2) # the number of clusters, 2
+    parser.add_argument("--k", "-k", type=int, default=2) # draft based k documents, 2
     parser.add_argument("--m", "-m", type=int, default=5) # the number of drafts, 5
     parser.add_argument("--drafter", "-dr", type=str, default="mistralai/Mistral-7B-v0.1")
     parser.add_argument("--drafter_path", "-dp", type=str, default=None, help="Path to locally fine-tuned RAG drafter directory")
@@ -58,14 +58,14 @@ if __name__ == "__main__":
     total = 0
     outputs = []
     print(f"\n❗ Total QA Pairs: {len(qa_pairs)}\n")
-    #for question, answithchoi in tqdm(islice(qa_pairs.items(), 5), desc="QA Evaluation", unit="pair"): # test
-    for question, answithchoi in tqdm(qa_pairs.items(), desc="QA Evaluation", unit="pair"):
+    for question, answithchoi in tqdm(islice(qa_pairs.items(), 5), desc="QA Evaluation", unit="pair"): # test
+    #for question, answithchoi in tqdm(qa_pairs.items(), desc="QA Evaluation", unit="pair"):
 
         answer = answithchoi["answer"]
         choices = answithchoi["choices"]
 
-        clusters = documents_to_clusters(index_path=args.index_path, meta_path=args.meta_path, k=args.k)
-        subsets = multi_perspective_sampling(clusters=clusters, m=args.m)
+        clusters = documents_to_clusters(index_path=args.index_path, meta_path=args.meta_path, m=args.m)
+        subsets = multi_perspective_sampling(clusters=clusters, k=args.k)
 
         drafts = []
         generated_answer = ""
