@@ -6,6 +6,7 @@ import pickle
 import re
 from tqdm import tqdm
 from itertools import islice
+import logging
 
 import sys
 sys.path.append('./src/utils')
@@ -13,6 +14,13 @@ from multi_perspective import documents_to_clusters, multi_perspective_sampling
 from rag_drafter import generate_draft
 from rag_verifier import compute_score
 from metrics import batched_select_best_choice, batched_select_best_choice_open
+
+# Set up logging
+logging.basicConfig(
+    filename='evaluation_log_51.txt',  # Log file name
+    level=logging.INFO,  # Log level
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -43,10 +51,12 @@ if __name__ == "__main__":
         q = item.get("question")
         a = item.get("answer")
         choices = item.get("choices")
+        retrieved_docs = item.get("retrieved_docs")
         if q and a:
             qa_pairs[q] = {
                 "answer": a,
-                "choices": choices 
+                "choices": choices, 
+                "docs": retrieved_docs
             }
 
     if args.drafter_path:
@@ -57,16 +67,27 @@ if __name__ == "__main__":
     correct = 0
     total = 0
     outputs = []
-    print(f"\n❗ Total QA Pairs: {len(qa_pairs)}\n")
-    for question, answithchoi in tqdm(islice(qa_pairs.items(), 5), desc="QA Evaluation", unit="pair"): # test
-    #for question, answithchoi in tqdm(qa_pairs.items(), desc="QA Evaluation", unit="pair"):
+    logging.info(f"\n❗ Total QA Pairs: {len(qa_pairs)}\n")
+    #for question, others in tqdm(islice(qa_pairs.items(), 10), desc="QA Evaluation", unit="pair"): # test
+    for question, others in tqdm(qa_pairs.items(), desc="QA Evaluation", unit="pair"):
 
-        answer = answithchoi["answer"]
-        choices = answithchoi["choices"]
+        #print(f"question: {question}")
+        #print(f"ground_truth: {answer}")
 
-        clusters = documents_to_clusters(index_path=args.index_path, meta_path=args.meta_path, m=args.m)
+        answer = others["answer"]
+        choices = others["choices"]
+        docs = others["docs"]
+        #print(f"docs: {docs}")
+
+        clusters = documents_to_clusters(docs=docs, m=args.m)
         subsets = multi_perspective_sampling(clusters=clusters, k=args.k)
+        # print(f"clusters: {clusters}")
+        #print(f"subsets: {subsets}")
 
+
+        #print(f"args k is ... {args.k}")
+  
+        
         drafts = []
         generated_answer = ""
         for i, subset in enumerate(subsets):
@@ -80,7 +101,6 @@ if __name__ == "__main__":
             drafts.append((response, rationale, draft_score))
             generated_answer += f"{response}"
         print(f'drafts: {drafts}')
-        print(f'number of draft: {len(drafts)}')
 
         scores = []
         for i, (response, rationale, draft_score) in enumerate(drafts):
@@ -95,8 +115,8 @@ if __name__ == "__main__":
 
         best_idx = np.argmax(scores)
         best_response = drafts[best_idx][0]
-        print(f"best_idx: {best_idx}")
-        print(f"best_response: {best_response}")
+        logging.info(f"best_idx: {best_idx}")
+        logging.info(f"best_response: {best_response}")
     
         d = {
             "ground_truth": answer,
