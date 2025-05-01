@@ -8,18 +8,24 @@ import pickle
 import os
 import contextlib
 from sentence_transformers import SentenceTransformer
-from transformers.utils import logging as hf_logging
+import sys
 
-os.environ["TRANSFORMERS_VERBOSITY"] = "error"
-# transformers 로깅 레벨을 ERROR로 설정: progress bar 끄기
-hf_logging.set_verbosity_error()
-
-# Redirect print outputs (stdout/stderr) when loading models
 @contextlib.contextmanager
-def suppress_transformers_output():
-    with open(os.devnull, 'w') as devnull:
-        with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
+def suppress_stdout():
+    with open(os.devnull, 'w') as fnull:
+        old_stdout = sys.stdout
+        old_stderr = sys.stderr
+        sys.stdout = fnull
+        sys.stderr = fnull
+        try:
             yield
+        finally:
+            sys.stdout = old_stdout
+            sys.stderr = old_stderr
+
+# 출력 억제하고 모델 로딩
+with suppress_stdout():
+    model = SentenceTransformer("all-MiniLM-L6-v2")
 
 # K-means clustering
 def documents_to_clusters(
@@ -28,9 +34,9 @@ def documents_to_clusters(
     
     random.seed(seed)
 
-    model = SentenceTransformer("all-MiniLM-L6-v2") 
+    #model = SentenceTransformer("all-MiniLM-L6-v2") 
     texts = [doc["text"] for doc in docs]
-    embeddings = model.encode(texts, show_progress_bar=True)
+    embeddings = model.encode(texts, show_progress_bar=False)
 
     #print(f"texts: {texts}")
     
