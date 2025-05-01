@@ -1,6 +1,7 @@
 '''
-(Fine-tuning) retrieved documents를 embedding할 수 있는 형태로 변환
+Convert File Format for Embedding (Fine-tuning)
 '''
+
 import json
 import argparse
 
