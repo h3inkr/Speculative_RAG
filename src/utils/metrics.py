@@ -1,10 +1,6 @@
-import re, json, string
-from tqdm import tqdm
+import re, string
 import numpy as np
-from collections import Counter
-
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer, util
 
 def normalize_answer(s):
     def remove_articles(text):
@@ -22,40 +18,78 @@ def normalize_answer(s):
 
     return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-def select_best_choice_based_on_answer(d):
+def batched_select_best_choice(datalist): # Closed-set QA
     """
-    Select the most appropriate choice based on the generated answer.
+    datalist: list of dicts, each dict has 'generated_answer' and 'choices' keys
     """
-    generated_answer = d['generated_answer']
-    choices = d['choices']
-    
-    # Prepare the text data for comparison
-    choice_texts = choices['text']
-    
-    # Vectorize 'generated_answer' and choices using TF-IDF
-    tfidf_vectorizer = TfidfVectorizer().fit_transform([generated_answer] + choice_texts)
-    
-    # Calculate cosine similarity
-    cosine_similarities = cosine_similarity(tfidf_vectorizer[0:1], tfidf_vectorizer[1:])
-    
-    # Select highest option
-    best_choice_idx = cosine_similarities.argmax()
-    best_choice = choice_texts[best_choice_idx]
-    
-    return best_choice, choices['label'][best_choice_idx]
+    model = SentenceTransformer('all-MiniLM-L6-v2')
 
-def compute_metrics(data):
+    all_generated_answers = []
+    all_choices = []
+
+    # flatten choices
+    for d in datalist:
+        generated_answer = normalize_answer(d['generated_answer'])
+        choices = d['choices']['text']
+        all_generated_answers.append(generated_answer)
+        all_choices.append(choices)
+
+    # Encode all generated answers
+    gen_embs = model.encode(all_generated_answers, convert_to_tensor=True, batch_size=64)
+
+    # Encode all choices
+    flat_choices = sum(all_choices, [])  # flatten: list of all choices
+    choice_embs = model.encode(flat_choices, convert_to_tensor=True, batch_size=64)
+
+    # Now, reshape choice_embs to [num_samples, num_choices, emb_dim]
+    num_samples = len(datalist)
+    num_choices = len(all_choices[0])  # assume fixed number, like 4
+    emb_dim = choice_embs.shape[-1]
+
+    choice_embs = choice_embs.reshape(num_samples, num_choices, emb_dim)
+
     correct = 0
-    data_len = 0
-    for d in tqdm(data):
-        data_len += 1
-        
-        # Select the most appropriate choice based on the generated answer
-        best_choice, best_choice_label = select_best_choice_based_on_answer(d)
-        
-        # Compare the selected choice with the ground truth
-        if best_choice_label == d["ground_truth"]:
+    total = num_samples
+
+    for i, d in enumerate(datalist):
+        gen_emb = gen_embs[i]
+        choices_emb = choice_embs[i]
+
+        sims = util.cos_sim(gen_emb, choices_emb).squeeze(0)  # (4,)
+        best_idx = sims.argmax().item()
+
+        predicted_label = d['choices']['label'][best_idx]
+        if predicted_label == d['ground_truth']:
             correct += 1
 
-    acc = correct / data_len * 100 if data_len != 0 else 0
-    print(f"Accuracy: {acc:.1f}%")
+        print(f'{i+1}th QA...')
+        print(f"ground truth: {d['ground_truth']}")
+        print(f"predicted_label: {predicted_label}")
+
+    acc = correct / total * 100 if total != 0 else 0
+    print(f"\n🔑 Accuracy: {acc:.1f}%")
+
+def batched_select_best_choice_open(datalist): # Open-set QA
+    """
+    datalist: list of dicts, each dict has 'generated_answer', 'choices', and 'ground_truth' keys.
+    Assumes 'choices' is a list of strings, and 'ground_truth' is a string.
+    """
+    model = SentenceTransformer('all-MiniLM-L6-v2')
+
+    correct = 0
+    total = len(datalist)
+
+    for i, d in enumerate(datalist):
+        generated_answer = normalize_answer(d['generated_answer'])
+        ground_truth = normalize_answer(d['ground_truth'])
+
+        if ground_truth in generated_answer:
+            correct += 1
+
+        #print(f'{i+1}th QA...')
+        #print(f"ground truth: {d['ground_truth']}")
+        #print(f"generated_answer: {d['generated_answer']}")
+        #print(f"✅ Matched: {ground_truth in generated_answer}")
+
+    acc = correct / total * 100 if total != 0 else 0
+    print(f"\n🔑 Accuracy: {acc:.1f}%")

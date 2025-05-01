@@ -8,7 +8,7 @@ import numpy as np
 import os
 import pickle
 
-device = torch.device("cuda:3" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 def InbedderEmbedding(input_path, index_output_path, metadata_output_path):
     embedding_model = "KomeijiForce/inbedder-roberta-large"
@@ -30,20 +30,34 @@ def InbedderEmbedding(input_path, index_output_path, metadata_output_path):
 
     doc_texts = []
     metadata = []
+
+    #print(f"corpus: {corpus}")
     for item in corpus:
         if not item.get("retrieved_docs"):
             continue  # skip if no retrieved_docs
 
-        doc = item["retrieved_docs"][0]  # only first doc used for embedding
-        doc_texts.append(doc["text"])
+        # 모든 retrieved_docs의 text를 수집
+        docs = item["retrieved_docs"]
+        for doc in docs:
+            doc_texts.append(doc["text"])
+            #print(f"doc: {doc}")
+
+        #print(f"item: {item}")
+        # metadata 하나에 retrieved_docs 전체를 저장
         metadata.append({
             "question": item.get("question"),
-            "answer": item.get("answerKey"),  # changed from "answer" to "answerKey"
+            "answer": item.get("answerKey"),
             "choices": item.get("choices"),
-            "doc_id": doc.get("id", None),
-            "doc_title": doc.get("title", None),
-            "text": doc.get("text", None)
+            "retrieved_docs": [
+                {
+                    "doc_id": doc.get("id", None),
+                    "doc_title": doc.get("title", None),
+                    "text": doc.get("text", None)
+                }
+                for doc in docs
+            ]
         })
+        #print(f"metadata: {metadata}")
 
     # Embed corpus
     def embed_texts(texts, tokenizer, model, batch_size=32):
@@ -71,9 +85,9 @@ def InbedderEmbedding(input_path, index_output_path, metadata_output_path):
 
 def parse_argument():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input_path", "-ip", type=str, help="Path to input .json or .jsonl file")
-    parser.add_argument("--index_path", "-inp", type=str, help="Path to save FAISS index")
-    parser.add_argument("--meta_path", "-mp", type=str, help="Path to save doc metadata")
+    parser.add_argument("--input_path", "-ip", type=str, help="Path to input .json or .jsonl file") # ./data/inference/arc-c/test_retrieved.jsonl
+    parser.add_argument("--index_path", "-inp", type=str, help="Path to save FAISS index") # ./data/inference/arc-c/test_psg.index
+    parser.add_argument("--meta_path", "-mp", type=str, help="Path to save doc metadata") # ./data/inference/arc-c/test_psg_meta.pkl
     return parser.parse_args()
 
 if __name__ == "__main__":

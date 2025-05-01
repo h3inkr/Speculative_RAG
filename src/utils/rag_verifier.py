@@ -62,6 +62,7 @@ def compute_segment_indices(prompt, segments, tokenizer):
                 offset += seg_len
                 break
             offset += 1
+            
     return indices
 
 def compute_rho_values(Q, alpha, beta, R, device, tokenizer, model):
@@ -80,7 +81,6 @@ def compute_rho_values(Q, alpha, beta, R, device, tokenizer, model):
                        log_probs[beta_start:beta_end].sum())
 
     rho_sr = math.exp(log_probs[yes_start:yes_end].sum())
-
 
     return rho_sc, rho_sr
 

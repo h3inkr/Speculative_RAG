@@ -61,12 +61,22 @@ def multi_perspective_sampling(
     random.seed(seed)
     all_sampled_ids = []
 
-    for _ in range(m):
-        subsets = []
-        for item in clusters:
-            doc_ids = [doc["doc_id"] for doc in item]
-            sampled_ids = random.sample(doc_ids, 1)
-            subsets.append(sampled_ids)
-        all_sampled_ids.append(subsets)
+    for item in clusters:
+        if not isinstance(item, list):
+            continue  # 혹시 item이 리스트가 아니면 skip
+
+        doc_ids = [
+            retrieved["doc_id"]
+            for doc in item
+            if isinstance(doc, dict)
+            for retrieved in doc.get("retrieved_docs", [])
+            if "doc_id" in retrieved
+        ]
+
+        if not doc_ids:
+            continue
+
+        sampled_ids = random.sample(doc_ids, 1)
+        all_sampled_ids.append(sampled_ids)
 
     return all_sampled_ids
