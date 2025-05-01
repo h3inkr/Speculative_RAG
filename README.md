@@ -1,6 +1,6 @@
 ![image](https://github.com/user-attachments/assets/eb1baddd-4903-431e-b352-44d5d57784d2)
 
-Pytorch Implementation for the paper [Speculative RAG](https://arxiv.org/abs/2407.08223) (ICLR 2025)
+Implementation for the paper [Speculative RAG](https://arxiv.org/abs/2407.08223) (ICLR 2025)
 
 ## Installation
 You can directly create a conda environment using the provided configuration file.
