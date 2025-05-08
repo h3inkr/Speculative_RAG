@@ -21,7 +21,6 @@ def parse_argument():
     parser.add_argument("--rationale_generator", "-dr", type=str, default="Gemini-Ultra")
     return parser.parse_args()
 
-# 각 모델의 마지막 요청 시각을 기록
 last_called = {}
 lock = Lock()
 

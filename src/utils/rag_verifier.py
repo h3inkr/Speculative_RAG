@@ -1,107 +1,105 @@
-
-
-
-
 import numpy as np
 import torch
 import torch.nn.functional as F
 import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:4" 
 import contextlib
 import math
 
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, BitsAndBytesConfig
 
 os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+
 def load_model_silently(model_name: str, device: str):
-    """
-    Load the model and tokenizer while suppressing any stdout/stderr output.
-    """
     with open(os.devnull, 'w') as devnull:
         with contextlib.redirect_stdout(devnull), contextlib.redirect_stderr(devnull):
             tokenizer = AutoTokenizer.from_pretrained(model_name)
+
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_compute_dtype=torch.float16,
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_quant_type="nf4",
+                llm_int8_enable_fp32_cpu_offload=True
+            )
+
             model = AutoModelForCausalLM.from_pretrained(
                 model_name,
+                quantization_config=bnb_config,
+                device_map="auto",
                 torch_dtype=torch.float16
-            ).to(device)
-    return tokenizer, model
+            )
+            model.gradient_checkpointing_enable()
+
+    return model, tokenizer
 
 def get_token_probs(full_input, device, tokenizer, model):
-    """
-    Returns token-level log-probs from a single forward pass.
-    """
-    inputs = tokenizer(full_input, return_tensors="pt")
-    input_ids = inputs.input_ids.to(device)
+    inputs = tokenizer(full_input, return_tensors="pt").to(device)
+    input_ids = inputs.input_ids
     
     with torch.no_grad():
-        outputs = model(input_ids=input_ids)
+        outputs = model(**input_ids)
         logits = outputs.logits  # shape: [1, seq_len, vocab_size]
     
     log_probs = torch.log_softmax(logits, dim=-1)
     token_log_probs = log_probs[0, :-1, :]  # predict token i+1 using position i
 
-    chosen_tokens = input_ids[0, 1:]  # drop the first token for alignment
+    chosen_tokens = input_ids[0, 1:]
     chosen_log_probs = token_log_probs.gather(1, chosen_tokens.unsqueeze(-1)).squeeze(-1)
     
     return chosen_log_probs, input_ids[0]
 
-def compute_segment_indices(prompt, segments, tokenizer):
-    """
-    Given the full prompt string and a list of segment strings [Q, α, β, R, "Yes"],
-    returns a list of (start_idx, end_idx) for each segment in token space.
-    """
-    tokenized_prompt = tokenizer(prompt, add_special_tokens=False).input_ids
-    indices = []
-    offset = 0
-    for segment in segments:
-        tokenized_segment = tokenizer(segment, add_special_tokens=False).input_ids
-        seg_len = len(tokenized_segment)
-        # Find sublist starting from current offset
-        while offset < len(tokenized_prompt):
-            if tokenized_prompt[offset:offset + seg_len] == tokenized_segment:
-                indices.append((offset, offset + seg_len))
-                offset += seg_len
-                break
-            offset += 1
-            
-    return indices
-
 def compute_rho_values(Q, alpha, beta, R, device, tokenizer, model):
-    segments = [Q, alpha, beta, R, " Yes"]  # include leading space if needed
-    full_prompt = f"Question: {Q}\nDraft: {alpha}\nRationale: {beta}\nReflection: {R}\nAnswer: Yes"
-    
-    log_probs, input_ids = get_token_probs(full_prompt, device, tokenizer, model)
-    segment_indices = compute_segment_indices(full_prompt, segments, tokenizer)
 
-    # Get log-probs for α, β, and "Yes"
-    alpha_start, alpha_end = segment_indices[1]
-    beta_start, beta_end = segment_indices[2]
-    yes_start, yes_end = segment_indices[4]
+    q_ids = tokenizer("Question: " + Q, add_special_tokens=False, return_tensors="pt")["input_ids"]
+    a_ids = tokenizer("Draft: " + alpha, add_special_tokens=False, return_tensors="pt")["input_ids"]
+    b_ids = tokenizer("Rationale: " + beta, add_special_tokens=False, return_tensors="pt")["input_ids"]
+    r_ids = tokenizer("Reflection: " + R, add_special_tokens=False, return_tensors="pt")["input_ids"]
+    y_ids = tokenizer("Answer: Yes", add_special_tokens=False, return_tensors="pt")["input_ids"]
 
-    rho_sc = math.exp(log_probs[alpha_start:alpha_end].sum() +
-                       log_probs[beta_start:beta_end].sum())
+    input_ids = torch.cat([q_ids, a_ids, b_ids, r_ids, y_ids], dim=1).to("cuda:1")  # shape: [1, total_seq_len]
+    model.eval()
+    model = model.to("cuda:1")
 
-    rho_sr = math.exp(log_probs[yes_start:yes_end].sum())
+    with torch.no_grad():
+        outputs = model(input_ids)
+        logits = outputs.logits
+
+    log_probs = torch.log_softmax(logits, dim=-1)
+    token_log_probs = log_probs[0, :-1, :]  # shift
+    chosen_tokens = input_ids[0, 1:]        # shift
+    chosen_log_probs = token_log_probs.gather(1, chosen_tokens.unsqueeze(-1)).squeeze(-1)
+
+    # Range 계산
+    q_len = q_ids.shape[1]
+    a_len = a_ids.shape[1]
+    b_len = b_ids.shape[1]
+    y_len = y_ids.shape[1]
+
+    alpha_range = (q_len, q_len + a_len)
+    beta_range = (alpha_range[1], alpha_range[1] + b_len)
+    yes_range = (input_ids.shape[1] - y_len, input_ids.shape[1])
+
+    # rho 값 계산
+    rho_sc = math.exp(chosen_log_probs[alpha_range[0] - 1:alpha_range[1] - 1].sum().item() +
+                      chosen_log_probs[beta_range[0] - 1:beta_range[1] - 1].sum().item())
+    rho_sr = math.exp(chosen_log_probs[yes_range[0] - 1:yes_range[1] - 1].sum().item())
 
     return rho_sc, rho_sr
 
 
-def compute_score(
-    question: str, verifier: str, answer: str, rationale: str, draft_score: str, device: str
-) -> float:
-    
-    tokenizer, model = load_model_silently(verifier, device)
-    
-    R = "Is the rationale good enough to support the answer? (Yes or No)"
-    
-    self_contain, self_reflect = compute_rho_values(question, answer, rationale, R, device, tokenizer, model)
-    #final_score = draft_score * self_contain * self_reflect
-    #print(f"Self consistency score: {self_contain}")
-    #print(f"Self reflection score: {self_reflect}")
-    
-    if any(math.isnan(x) for x in [draft_score, self_contain, self_reflect]):
-        final_score = 0.0
-    else:
-        final_score = draft_score * self_contain * self_reflect
-    #print(f"Final score: {final_score}")
+def compute_score(answer, rationale, draft_score, question, device, tokenizer, model):
 
-    return final_score
+    if answer == '' or rationale == '': # response와 rationale 둘 중 하나라도 빈 string이면 후보에서 제외
+        return 0.0
+    else: 
+        R = "Is the rationale good enough to support the answer? (Yes or No)"
+        self_contain, self_reflect = compute_rho_values(question, answer, rationale, R, device, tokenizer, model)
+
+        if any(math.isnan(x) for x in [draft_score, self_contain, self_reflect]):
+            return 0.0
+        else:
+            score = draft_score * self_contain * self_reflect
+            torch.cuda.empty_cache()
+            return score
+
